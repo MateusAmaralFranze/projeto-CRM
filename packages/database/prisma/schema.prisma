@@ -1,0 +1,650 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum WorkspaceRole {
+  owner
+  admin
+  traffic_manager
+  closer
+  viewer
+
+  @@map("workspace_role")
+}
+
+enum AdPlatform {
+  meta
+  google
+  tiktok
+  kwai
+  pinterest
+
+  @@map("ad_platform")
+}
+
+enum CheckoutPlatform {
+  hotmart
+  kiwify
+  eduzz
+  braip
+  monetizze
+  perfectpay
+  shopify
+  yampi
+  nuvemshop
+  stripe
+  pagseguro
+  mercadopago
+  generic_webhook
+
+  @@map("checkout_platform")
+}
+
+enum ConnectionStatus {
+  active
+  expired
+  error
+  disconnected
+
+  @@map("connection_status")
+}
+
+enum SaleStatus {
+  pending
+  paid
+  refunded
+  chargeback
+  canceled
+
+  @@map("sale_status")
+}
+
+enum RefundType {
+  refund
+  chargeback
+
+  @@map("refund_type")
+}
+
+enum AttributionModel {
+  last_click
+  first_click
+
+  @@map("attribution_model")
+}
+
+enum AttributionConfidence {
+  exact_click_id
+  utm_match
+  unattributed
+
+  @@map("attribution_confidence")
+}
+
+enum LeadStage {
+  new
+  contact
+  negotiation
+  won
+  lost
+
+  @@map("lead_stage")
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+
+  @@map("subscription_status")
+}
+
+enum AlertScope {
+  workspace
+  campaign
+  ad_set
+  ad
+
+  @@map("alert_scope")
+}
+
+enum AlertOperator {
+  gt
+  lt
+  gte
+  lte
+
+  @@map("alert_operator")
+}
+
+// ==========================================
+// WORKSPACE / TENANCY
+// ==========================================
+
+model Workspace {
+  id            String    @id @default(uuid())
+  name          String
+  slug          String    @unique
+  logoUrl       String?   @map("logo_url")
+  primaryColor  String?   @map("primary_color")
+  planId        String?   @map("plan_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  plan                Plan?                @relation(fields: [planId], references: [id])
+  members             WorkspaceMember[]
+  auditLogs           AuditLog[]
+  subscriptions       Subscription[]
+  adAccountConns      AdAccountConnection[]
+  checkoutConns       CheckoutConnection[]
+  campaigns           Campaign[]
+  adSets              AdSet[]
+  ads                 Ad[]
+  adMetricSnapshots   AdMetricSnapshot[]
+  utmLinks            UtmLink[]
+  clicks              Click[]
+  products            Product[]
+  sales               Sale[]
+  refunds             Refund[]
+  saleAttributions    SaleAttribution[]
+  leads               Lead[]
+  leadInteractions    LeadInteraction[]
+  salesTargets        SalesTarget[]
+  alertRules          AlertRule[]
+  alertEvents         AlertEvent[]
+  metricsDaily        MetricsDaily[]
+  outboundWebhooks    OutboundWebhook[]
+
+  @@map("workspace")
+}
+
+model User {
+  id                String   @id @default(uuid())
+  email             String   @unique
+  passwordHash      String?  @map("password_hash")
+  name              String
+  twoFactorSecret   String?  @map("two_factor_secret")
+  twoFactorEnabled  Boolean  @default(false) @map("two_factor_enabled")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  memberships       WorkspaceMember[]
+  auditLogs         AuditLog[]
+  assignedLeads     Lead[]            @relation("LeadAssignedTo")
+  leadInteractions  LeadInteraction[]
+  salesTargets      SalesTarget[]
+
+  @@map("user")
+}
+
+model WorkspaceMember {
+  id           String        @id @default(uuid())
+  workspaceId  String        @map("workspace_id")
+  userId       String        @map("user_id")
+  role         WorkspaceRole
+  invitedAt    DateTime?     @map("invited_at")
+  joinedAt     DateTime?     @map("joined_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_member")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  userId      String?  @map("user_id")
+  action      String
+  entityType  String?  @map("entity_type")
+  entityId    String?  @map("entity_id")
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id])
+
+  @@map("audit_log")
+}
+
+// ==========================================
+// PLANOS E ASSINATURA
+// ==========================================
+
+model Plan {
+  id                       String  @id @default(uuid())
+  name                     String
+  maxAdAccounts            Int     @map("max_ad_accounts")
+  maxCheckoutConnections   Int     @map("max_checkout_connections")
+  maxUsers                 Int     @map("max_users")
+  maxEventsMonth           BigInt  @map("max_events_month")
+  priceCents               Int     @map("price_cents")
+  stripePriceId            String? @map("stripe_price_id")
+
+  workspaces    Workspace[]
+  subscriptions Subscription[]
+
+  @@map("plan")
+}
+
+model Subscription {
+  id                     String              @id @default(uuid())
+  workspaceId            String              @map("workspace_id")
+  planId                 String              @map("plan_id")
+  status                 SubscriptionStatus
+  stripeSubscriptionId   String?             @map("stripe_subscription_id")
+  currentPeriodEnd       DateTime?           @map("current_period_end")
+  createdAt              DateTime            @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan      Plan      @relation(fields: [planId], references: [id])
+
+  @@map("subscription")
+}
+
+// ==========================================
+// CONEXÕES (anúncio e checkout)
+// ==========================================
+
+model AdAccountConnection {
+  id                  String            @id @default(uuid())
+  workspaceId         String            @map("workspace_id")
+  platform            AdPlatform
+  externalAccountId   String            @map("external_account_id")
+  accessToken         String            @map("access_token")
+  refreshToken        String?           @map("refresh_token")
+  tokenExpiresAt      DateTime?         @map("token_expires_at")
+  status              ConnectionStatus  @default(active)
+  lastSyncedAt        DateTime?         @map("last_synced_at")
+  createdAt           DateTime          @default(now()) @map("created_at")
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaigns Campaign[]
+
+  @@unique([workspaceId, platform, externalAccountId])
+  @@map("ad_account_connection")
+}
+
+model CheckoutConnection {
+  id                  String            @id @default(uuid())
+  workspaceId         String            @map("workspace_id")
+  platform            CheckoutPlatform
+  externalAccountId   String?           @map("external_account_id")
+  webhookSecret       String            @map("webhook_secret")
+  apiCredentials      String?           @map("api_credentials")
+  status              ConnectionStatus  @default(active)
+  createdAt           DateTime          @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sales     Sale[]
+
+  @@unique([workspaceId, platform, externalAccountId])
+  @@map("checkout_connection")
+}
+
+// ==========================================
+// HIERARQUIA DE CAMPANHA
+// ==========================================
+
+model Campaign {
+  id                     String   @id @default(uuid())
+  workspaceId            String   @map("workspace_id")
+  adAccountConnectionId  String   @map("ad_account_connection_id")
+  externalId             String   @map("external_id")
+  name                   String
+  status                 String?
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  workspace  Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection AdAccountConnection  @relation(fields: [adAccountConnectionId], references: [id], onDelete: Cascade)
+  adSets     AdSet[]
+  metricsDaily MetricsDaily[]
+
+  @@unique([adAccountConnectionId, externalId])
+  @@map("campaign")
+}
+
+model AdSet {
+  id          String  @id @default(uuid())
+  workspaceId String  @map("workspace_id")
+  campaignId  String  @map("campaign_id")
+  externalId  String  @map("external_id")
+  name        String
+  status      String?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign  Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  ads       Ad[]
+  metricsDaily MetricsDaily[]
+
+  @@unique([campaignId, externalId])
+  @@map("ad_set")
+}
+
+model Ad {
+  id                     String  @id @default(uuid())
+  workspaceId            String  @map("workspace_id")
+  adSetId                String  @map("ad_set_id")
+  externalId             String  @map("external_id")
+  name                   String
+  creativeThumbnailUrl   String? @map("creative_thumbnail_url")
+  status                 String?
+
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  adSet              AdSet               @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  metricSnapshots    AdMetricSnapshot[]
+  utmLinks           UtmLink[]
+  saleAttributions   SaleAttribution[]
+  metricsDaily       MetricsDaily[]
+
+  @@unique([adSetId, externalId])
+  @@map("ad")
+}
+
+// ==========================================
+// MÉTRICAS BRUTAS DE MÍDIA
+// ==========================================
+
+model AdMetricSnapshot {
+  id           String   @id @default(uuid())
+  workspaceId  String   @map("workspace_id")
+  adId         String   @map("ad_id")
+  date         DateTime @db.Date
+  spendCents   BigInt   @default(0) @map("spend_cents")
+  impressions  BigInt   @default(0)
+  clicks       BigInt   @default(0)
+  reach        BigInt   @default(0)
+  frequency    Decimal? @db.Decimal(10, 4)
+  syncedAt     DateTime @default(now()) @map("synced_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ad        Ad        @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@unique([adId, date])
+  @@index([workspaceId, date])
+  @@map("ad_metric_snapshot")
+}
+
+// ==========================================
+// UTM / RASTREAMENTO PRÓPRIO
+// ==========================================
+
+model UtmLink {
+  id              String   @id @default(uuid())
+  workspaceId     String   @map("workspace_id")
+  adId            String?  @map("ad_id")
+  shortCode       String   @unique @map("short_code")
+  destinationUrl  String   @map("destination_url")
+  utmSource       String?  @map("utm_source")
+  utmMedium       String?  @map("utm_medium")
+  utmCampaign     String?  @map("utm_campaign")
+  utmContent      String?  @map("utm_content")
+  utmTerm         String?  @map("utm_term")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ad        Ad?       @relation(fields: [adId], references: [id], onDelete: SetNull)
+  clicks    Click[]
+
+  @@map("utm_link")
+}
+
+model Click {
+  id           String   @id @default(uuid())
+  workspaceId  String   @map("workspace_id")
+  utmLinkId    String?  @map("utm_link_id")
+  clickId      String   @unique @map("click_id")
+  ipHash       String?  @map("ip_hash")
+  userAgent    String?  @map("user_agent")
+  utmSource    String?  @map("utm_source")
+  utmMedium    String?  @map("utm_medium")
+  utmCampaign  String?  @map("utm_campaign")
+  utmContent   String?  @map("utm_content")
+  utmTerm      String?  @map("utm_term")
+  occurredAt   DateTime @default(now()) @map("occurred_at")
+
+  workspace        Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  utmLink          UtmLink?           @relation(fields: [utmLinkId], references: [id], onDelete: SetNull)
+  saleAttributions SaleAttribution[]
+
+  @@index([workspaceId, occurredAt])
+  @@map("click")
+}
+
+// ==========================================
+// PRODUTOS
+// ==========================================
+
+model Product {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  name        String
+  costCents   Int      @default(0) @map("cost_cents")
+  externalId  String?  @map("external_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sales     Sale[]
+
+  @@map("product")
+}
+
+// ==========================================
+// VENDAS
+// ==========================================
+
+model Sale {
+  id                     String     @id @default(uuid())
+  workspaceId            String     @map("workspace_id")
+  checkoutConnectionId   String     @map("checkout_connection_id")
+  productId              String?    @map("product_id")
+  externalId             String     @map("external_id")
+  status                 SaleStatus
+  amountCents            Int        @map("amount_cents")
+  customerEmailHash      String?    @map("customer_email_hash")
+  clickId                String?    @map("click_id")
+  rawUtmSource           String?    @map("raw_utm_source")
+  rawUtmMedium           String?    @map("raw_utm_medium")
+  rawUtmCampaign         String?    @map("raw_utm_campaign")
+  rawUtmContent          String?    @map("raw_utm_content")
+  paidAt                 DateTime?  @map("paid_at")
+  createdAt              DateTime   @default(now()) @map("created_at")
+
+  workspace  Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection CheckoutConnection  @relation(fields: [checkoutConnectionId], references: [id], onDelete: Cascade)
+  product    Product?            @relation(fields: [productId], references: [id])
+  refunds    Refund[]
+  attributions SaleAttribution[]
+
+  @@unique([checkoutConnectionId, externalId])
+  @@index([workspaceId, createdAt])
+  @@index([clickId])
+  @@map("sale")
+}
+
+model Refund {
+  id           String     @id @default(uuid())
+  workspaceId  String     @map("workspace_id")
+  saleId       String     @map("sale_id")
+  amountCents  Int        @map("amount_cents")
+  reason       String?
+  type         RefundType
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sale      Sale      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@map("refund")
+}
+
+// ==========================================
+// ATRIBUIÇÃO
+// ==========================================
+
+model SaleAttribution {
+  id                 String                  @id @default(uuid())
+  workspaceId        String                  @map("workspace_id")
+  saleId             String                  @map("sale_id")
+  clickId            String?                 @map("click_id")
+  adId               String?                 @map("ad_id")
+  attributionModel   AttributionModel        @map("attribution_model")
+  confidence         AttributionConfidence
+  createdAt          DateTime                @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  sale      Sale      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  click     Click?    @relation(fields: [clickId], references: [id])
+  ad        Ad?       @relation(fields: [adId], references: [id])
+
+  @@unique([saleId, attributionModel])
+  @@map("sale_attribution")
+}
+
+// ==========================================
+// CRM / PIPELINE
+// ==========================================
+
+model Lead {
+  id           String    @id @default(uuid())
+  workspaceId  String    @map("workspace_id")
+  name         String?
+  email        String?
+  phone        String?
+  source       String?
+  clickId      String?   @map("click_id")
+  stage        LeadStage @default(new)
+  assignedTo   String?   @map("assigned_to")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  workspace    Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assignedUser User?             @relation("LeadAssignedTo", fields: [assignedTo], references: [id])
+  interactions LeadInteraction[]
+
+  @@map("lead")
+}
+
+model LeadInteraction {
+  id           String   @id @default(uuid())
+  workspaceId  String   @map("workspace_id")
+  leadId       String   @map("lead_id")
+  userId       String?  @map("user_id")
+  type         String
+  content      String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead      Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id])
+
+  @@map("lead_interaction")
+}
+
+model SalesTarget {
+  id                  String   @id @default(uuid())
+  workspaceId         String   @map("workspace_id")
+  userId              String?  @map("user_id")
+  periodStart         DateTime @db.Date @map("period_start")
+  periodEnd           DateTime @db.Date @map("period_end")
+  targetAmountCents   BigInt   @map("target_amount_cents")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id])
+
+  @@map("sales_target")
+}
+
+// ==========================================
+// ALERTAS
+// ==========================================
+
+model AlertRule {
+  id           String        @id @default(uuid())
+  workspaceId  String        @map("workspace_id")
+  metric       String
+  scope        AlertScope
+  scopeId      String?       @map("scope_id")
+  operator     AlertOperator
+  threshold    Decimal       @db.Decimal
+  channels     String[]
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  events    AlertEvent[]
+
+  @@map("alert_rule")
+}
+
+model AlertEvent {
+  id               String    @id @default(uuid())
+  workspaceId      String    @map("workspace_id")
+  alertRuleId      String    @map("alert_rule_id")
+  triggeredValue   Decimal   @db.Decimal @map("triggered_value")
+  triggeredAt      DateTime  @default(now()) @map("triggered_at")
+  resolvedAt       DateTime? @map("resolved_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rule      AlertRule @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+
+  @@map("alert_event")
+}
+
+// ==========================================
+// MÉTRICAS AGREGADAS (rollup)
+// ==========================================
+
+model MetricsDaily {
+  id                  String   @id @default(uuid())
+  workspaceId         String   @map("workspace_id")
+  date                DateTime @db.Date
+  campaignId          String?  @map("campaign_id")
+  adSetId             String?  @map("ad_set_id")
+  adId                String?  @map("ad_id")
+  spendCents          BigInt   @default(0) @map("spend_cents")
+  impressions         BigInt   @default(0)
+  clicks              BigInt   @default(0)
+  reach               BigInt   @default(0)
+  salesCount          Int      @default(0) @map("sales_count")
+  revenueCents        BigInt   @default(0) @map("revenue_cents")
+  refundCents         BigInt   @default(0) @map("refund_cents")
+  productCostCents    BigInt   @default(0) @map("product_cost_cents")
+  computedAt          DateTime @default(now()) @map("computed_at")
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign  Campaign?  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  adSet     AdSet?     @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  ad        Ad?        @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, date, campaignId, adSetId, adId])
+  @@index([workspaceId, date, campaignId])
+  @@map("metrics_daily")
+}
+
+// ==========================================
+// WEBHOOK OUTBOUND
+// ==========================================
+
+model OutboundWebhook {
+  id           String   @id @default(uuid())
+  workspaceId  String   @map("workspace_id")
+  targetUrl    String   @map("target_url")
+  events       String[]
+  secret       String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("outbound_webhook")
+}

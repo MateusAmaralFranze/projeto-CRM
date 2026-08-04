@@ -1,0 +1,33 @@
+# dependências
+node_modules/
+.pnpm-store/
+
+# build outputs
+.next/
+dist/
+build/
+
+# turbo
+.turbo/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# editor/os
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# prisma
+packages/database/generated/
+
+# testes
+coverage/
