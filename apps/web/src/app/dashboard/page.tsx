@@ -71,6 +71,9 @@ export default function DashboardPage() {
           <Link href="/dashboard/equipe" className="text-sm text-brand-600 hover:underline">
             Equipe
           </Link>
+          <Link href="/dashboard/integracoes/checkout" className="text-sm text-brand-600 hover:underline">
+            Integração de Checkout
+          </Link>
         </div>
       </div>
     </main>

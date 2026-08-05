@@ -34,7 +34,7 @@ function authHeader(accessToken: string) {
 }
 
 // ==========================================
-// TIPOS
+// TIPOS — AUTH
 // ==========================================
 export type AuthUser = { id: string; name: string; email: string };
 export type AuthWorkspace = { id: string; name: string; slug: string };
@@ -85,9 +85,41 @@ export type InviteResult =
   | { status: "invited"; inviteToken: string; inviteUrl: string };
 
 // ==========================================
+// TIPOS — CHECKOUT (Etapa 5)
+// ==========================================
+export type CheckoutConnection = {
+  id: string;
+  platform: string;
+  label: string | null;
+  status: string;
+  createdAt: string;
+};
+
+export type CreateConnectionResult = {
+  id: string;
+  platform: string;
+  label: string | null;
+  webhookUrl: string;
+  webhookSecret: string;
+  createdAt: string;
+};
+
+export type SaleSummary = {
+  id: string;
+  externalId: string;
+  status: string;
+  amountCents: number;
+  productName: string | null;
+  utmSource: string | null;
+  utmCampaign: string | null;
+  createdAt: string;
+};
+
+// ==========================================
 // ENDPOINTS
 // ==========================================
 export const api = {
+  // ---- Auth ----
   signup: (input: SignupInput) =>
     request<SignupResult>("/auth/signup", { method: "POST", body: JSON.stringify(input) }),
 
@@ -173,4 +205,30 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ inviteToken, password }),
     }),
+
+  // ---- Checkout connections (Etapa 5) ----
+  listCheckoutConnections: (accessToken: string) =>
+    request<CheckoutConnection[]>("/checkout-connections", { headers: authHeader(accessToken) }),
+
+  createCheckoutConnection: (accessToken: string, label: string) =>
+    request<CreateConnectionResult>("/checkout-connections", {
+      method: "POST",
+      headers: authHeader(accessToken),
+      body: JSON.stringify({ platform: "generic_webhook", label }),
+    }),
+
+  deleteCheckoutConnection: (accessToken: string, id: string) =>
+    request<{ success: true }>(`/checkout-connections/${id}`, {
+      method: "DELETE",
+      headers: authHeader(accessToken),
+    }),
+
+  sendTestEvent: (accessToken: string, id: string) =>
+    request<{ sent: true; payload: Record<string, unknown> }>(
+      `/checkout-connections/${id}/test-event`,
+      { method: "POST", headers: authHeader(accessToken) },
+    ),
+
+  listRecentSales: (accessToken: string) =>
+    request<SaleSummary[]>("/sales", { headers: authHeader(accessToken) }),
 };

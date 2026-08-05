@@ -1,7 +1,14 @@
 import { Module } from "@nestjs/common";
+import { BullModule } from "@nestjs/bullmq";
 
-// Webhook receiver (checkouts) + workers BullMQ (sync de Ad Platforms,
-// processamento de eventos de webhook, avaliação de alertas).
-// Implementação chega nas Etapas 4 e 5.
-@Module({})
+import { IngestionService } from "./ingestion.service";
+import { CheckoutConnectionsController, SalesController } from "./checkout-connections.controller";
+import { CheckoutWebhookController } from "./checkout-webhook.controller";
+import { CheckoutWebhookProcessor } from "./checkout-webhook.processor";
+
+@Module({
+  imports: [BullModule.registerQueue({ name: "checkout-webhooks" })],
+  controllers: [CheckoutConnectionsController, SalesController, CheckoutWebhookController],
+  providers: [IngestionService, CheckoutWebhookProcessor],
+})
 export class IngestionModule {}
