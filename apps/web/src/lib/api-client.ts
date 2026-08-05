@@ -29,11 +29,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+function authHeader(accessToken: string) {
+  return { Authorization: `Bearer ${accessToken}` };
+}
+
 // ==========================================
 // TIPOS
 // ==========================================
 export type AuthUser = { id: string; name: string; email: string };
 export type AuthWorkspace = { id: string; name: string; slug: string };
+export type WorkspaceChoice = AuthWorkspace & { role: string };
 
 export type SignupInput = {
   workspaceName: string;
@@ -55,25 +60,44 @@ export type SingleWorkspaceAuthResult = {
 export type MultiWorkspaceAuthResult = {
   requiresWorkspaceSelection: true;
   preAuthToken: string;
-  workspaces: (AuthWorkspace & { role: string })[];
+  workspaces: WorkspaceChoice[];
 };
 
+export type LoginResult =
+  | { requires2FA: true; twoFaToken: string }
+  | ({ requires2FA: false } & (SingleWorkspaceAuthResult | MultiWorkspaceAuthResult));
+
 export type SignupResult = Omit<SingleWorkspaceAuthResult, "requiresWorkspaceSelection">;
+
+export type MemberSummary = {
+  membershipId: string;
+  userId: string;
+  name: string;
+  email: string;
+  role: string;
+  status: "active" | "pending";
+  invitedAt: string | null;
+  joinedAt: string | null;
+};
+
+export type InviteResult =
+  | { status: "added"; message: string }
+  | { status: "invited"; inviteToken: string; inviteUrl: string };
 
 // ==========================================
 // ENDPOINTS
 // ==========================================
 export const api = {
   signup: (input: SignupInput) =>
-    request<SignupResult>("/auth/signup", {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
+    request<SignupResult>("/auth/signup", { method: "POST", body: JSON.stringify(input) }),
 
   login: (input: LoginInput) =>
-    request<SingleWorkspaceAuthResult | MultiWorkspaceAuthResult>("/auth/login", {
+    request<LoginResult>("/auth/login", { method: "POST", body: JSON.stringify(input) }),
+
+  verifyLoginTwoFactor: (twoFaToken: string, code: string) =>
+    request<SingleWorkspaceAuthResult | MultiWorkspaceAuthResult>("/auth/2fa/verify-login", {
       method: "POST",
-      body: JSON.stringify(input),
+      body: JSON.stringify({ twoFaToken, code }),
     }),
 
   selectWorkspace: (preAuthToken: string, workspaceId: string) =>
@@ -82,15 +106,71 @@ export const api = {
       body: JSON.stringify({ preAuthToken, workspaceId }),
     }),
 
+  getWorkspacesForPreAuthToken: (token: string) =>
+    request<WorkspaceChoice[]>(`/auth/pre-auth/workspaces?token=${encodeURIComponent(token)}`),
+
   me: (accessToken: string) =>
     request<{ user: AuthUser & { twoFactorEnabled: boolean }; workspace: AuthWorkspace; role: string }>(
       "/auth/me",
-      { headers: { Authorization: `Bearer ${accessToken}` } },
+      { headers: authHeader(accessToken) },
     ),
 
   refresh: (refreshToken: string) =>
     request<{ accessToken: string; refreshToken: string }>("/auth/refresh", {
       method: "POST",
       body: JSON.stringify({ refreshToken }),
+    }),
+
+  // ---- 2FA ----
+  setupTwoFactor: (accessToken: string) =>
+    request<{ secret: string; qrCodeDataUrl: string }>("/auth/2fa/setup", {
+      method: "POST",
+      headers: authHeader(accessToken),
+    }),
+
+  enableTwoFactor: (accessToken: string, code: string) =>
+    request<{ success: true }>("/auth/2fa/enable", {
+      method: "POST",
+      headers: authHeader(accessToken),
+      body: JSON.stringify({ code }),
+    }),
+
+  disableTwoFactor: (accessToken: string, code: string) =>
+    request<{ success: true }>("/auth/2fa/disable", {
+      method: "POST",
+      headers: authHeader(accessToken),
+      body: JSON.stringify({ code }),
+    }),
+
+  // ---- Google ----
+  googleLoginUrl: () => `${API_URL}/auth/google`,
+
+  signupWithGoogle: (workspaceName: string, googleToken: string) =>
+    request<SignupResult>("/auth/signup/google", {
+      method: "POST",
+      body: JSON.stringify({ workspaceName, googleToken }),
+    }),
+
+  // ---- Membros do workspace ----
+  listMembers: (accessToken: string) =>
+    request<MemberSummary[]>("/workspace/members", { headers: authHeader(accessToken) }),
+
+  inviteMember: (accessToken: string, input: { email: string; name: string; role: string }) =>
+    request<InviteResult>("/workspace/members/invite", {
+      method: "POST",
+      headers: authHeader(accessToken),
+      body: JSON.stringify(input),
+    }),
+
+  removeMember: (accessToken: string, membershipId: string) =>
+    request<{ success: true }>(`/workspace/members/${membershipId}`, {
+      method: "DELETE",
+      headers: authHeader(accessToken),
+    }),
+
+  acceptInvite: (inviteToken: string, password: string) =>
+    request<SignupResult>("/auth/accept-invite", {
+      method: "POST",
+      body: JSON.stringify({ inviteToken, password }),
     }),
 };

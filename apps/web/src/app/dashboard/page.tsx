@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 
 export default function DashboardPage() {
@@ -62,6 +63,15 @@ export default function DashboardPage() {
           Este é um dashboard temporário — o dashboard real (KPIs, gráficos, filtros)
           chega na Etapa 7.
         </p>
+
+        <div className="mt-4 flex gap-4 border-t border-gray-100 pt-4">
+          <Link href="/dashboard/seguranca" className="text-sm text-brand-600 hover:underline">
+            Segurança (2FA)
+          </Link>
+          <Link href="/dashboard/equipe" className="text-sm text-brand-600 hover:underline">
+            Equipe
+          </Link>
+        </div>
       </div>
     </main>
   );

@@ -4,8 +4,10 @@ import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 
 import { AuthController } from "./auth.controller";
+import { WorkspaceMembersController, AcceptInviteController } from "./workspace-members.controller";
 import { AuthService } from "./auth.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
+import { GoogleStrategy } from "./strategies/google.strategy";
 import { RolesGuard } from "./guards/roles.guard";
 
 @Module({
@@ -20,8 +22,8 @@ import { RolesGuard } from "./guards/roles.guard";
       }),
     }),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, RolesGuard],
+  controllers: [AuthController, WorkspaceMembersController, AcceptInviteController],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, RolesGuard],
   exports: [AuthService, RolesGuard],
 })
 export class AuthModule {}

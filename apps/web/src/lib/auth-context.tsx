@@ -26,6 +26,8 @@ type AuthContextValue = AuthState & {
     user: AuthUser;
     workspace: AuthWorkspace;
   }) => void;
+  // Usado no retorno do login com Google: já temos os tokens, falta buscar user/workspace via /me
+  loginWithTokens: (accessToken: string, refreshToken: string) => Promise<void>;
   logout: () => void;
 };
 
@@ -44,7 +46,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
   });
 
-  // Ao carregar a página, tenta restaurar a sessão a partir do token salvo
   useEffect(() => {
     const accessToken = localStorage.getItem(STORAGE_ACCESS_KEY);
 
@@ -65,7 +66,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       })
       .catch(() => {
-        // token expirado/inválido -> limpa e trata como deslogado
         localStorage.removeItem(STORAGE_ACCESS_KEY);
         localStorage.removeItem(STORAGE_REFRESH_KEY);
         setState((s) => ({ ...s, isLoading: false }));
@@ -84,13 +84,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState({
         user: data.user,
         workspace: data.workspace,
-        role: "owner", // refinamos isso quando tivermos convite de membros (bloco 3)
+        role: "owner",
         accessToken: data.accessToken,
         isLoading: false,
       });
     },
     [],
   );
+
+  const loginWithTokens = useCallback(async (accessToken: string, refreshToken: string) => {
+    localStorage.setItem(STORAGE_ACCESS_KEY, accessToken);
+    localStorage.setItem(STORAGE_REFRESH_KEY, refreshToken);
+    const data = await api.me(accessToken);
+    setState({
+      user: data.user,
+      workspace: data.workspace,
+      role: data.role,
+      accessToken,
+      isLoading: false,
+    });
+  }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem(STORAGE_ACCESS_KEY);
@@ -100,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [router]);
 
   return (
-    <AuthContext.Provider value={{ ...state, setSession, logout }}>
+    <AuthContext.Provider value={{ ...state, setSession, loginWithTokens, logout }}>
       {children}
     </AuthContext.Provider>
   );
